@@ -30,11 +30,32 @@ class Sequence:
         self.max_tokens = sampling_params.max_tokens
         self.ignore_eos = sampling_params.ignore_eos
 
+        self.spec_tokens = []
+        self.num_spec_tokens = 0
+
     def __len__(self):
         return self.num_tokens
 
     def __getitem__(self, key):
         return self.token_ids[key]
+
+    def extend_tokens(self,token_ids:list[int])->None:
+        num_unaccept_draft_tokens = self.num_spec_tokens - len(token_ids) + 1
+        if num_unaccept_draft_tokens > 0:
+            del self.token_ids[-num_unaccept_draft_tokens:]
+        self.num_tokens -= num_unaccept_draft_tokens
+        self.append_token(token_ids[-1])
+        self.num_spec_tokens = 0
+
+    def merge_spec_tokens(self)->bool:
+        if len(self.spec_tokens) == 0:
+            return False
+        self.num_spec_tokens = len(self.spec_tokens)
+        self.token_ids.extend(self.spec_tokens)
+        self.num_tokens += self.num_spec_tokens
+        self.last_token = self.token_ids[-1]
+        self.spec_tokens = []
+        return True
 
     @property
     def is_finished(self):
