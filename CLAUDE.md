@@ -50,7 +50,7 @@
 | ⑦ | `layers/attention.py` | is_spec_decode 分支走 flash_attn_varlen |
 | ⑧ | `engine/llm_engine.py` | step() 串联四阶段（merge → verify → extend → sample_drafts） |
 
-**⚠️ 已知债务（2026-09-19，用户选 C 暂缓处理）**：`nanovllm/__init__.py` 第 1 行 `from nanovllm.llm import LLM` 被注释（为本地免装 flash_attn 跑测试），当前 `from nanovllm import LLM` **不可用**。触发条件：**任何 git push 之前必须先清偿**——恢复原样或改 PEP 562 懒加载（5 行，learningJob 简报 2026-09-19 有原文），否则云端 pull 后 example.py / bench.py 即断。
+**✓ 债务已清偿（2026-09-19，push 前）**：`nanovllm/__init__.py` 改为 PEP 562 懒加载（`__getattr__` 按需导出 `LLM`）——本地测试免装 flash_attn 照跑，且 `from nanovllm import LLM` 语义不变（本地无 torch/transformers 时报"依赖缺失"属正常，云端完整可用）。
 
 **验收**：`example.py` 跑通（enforce_eager）；greedy 下输出与不开 spec decode **逐 token 一致**；重复前缀负载下吞吐可见提升。
 
