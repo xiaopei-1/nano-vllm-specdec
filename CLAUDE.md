@@ -30,7 +30,7 @@
 
 ## 3. 红线（协作规则，最高优先级）
 
-1. **核心代码全部由用户手写，每行能讲 3 分钟。** Claude 不代写引擎核心代码——只提供：小任务拆解、卡点解答、代码审查
+1. **核心代码全部由用户手写。** Claude 不代写引擎核心代码——只提供：开工简报（2026-09-19 起）、卡点解答、代码审查。（"每行讲 3 分钟"抽查已于 2026-09-19 用户取消，理解验证由"主动提问"承载）
 2. **性能数字一律云卡产出**：开发调试 3080 Ti 12GB，简历数据 3090 24GB；本地 GTX 1650 4GB 只算编辑器，其数字不入任何记录
 3. **数字纪律**：对照组同卡/同负载/同 seed、各 3 轮取均值；接受率 α（算法侧）与加速比（系统侧）分开报；加速比量级对照理论值 S=(α+1)/(1+kc) 自检，对不上即测错；每个数字必须能还原测量过程
 4. **commit 有节奏**：一个小改动一个 commit，不批量 dump
@@ -41,7 +41,7 @@
 
 | 序 | 文件 | 改动 |
 |:--:|------|------|
-| ① | `engine/sequence.py` | spec_tokens / num_spec_tokens 字段 + merge_spec_tokens / extend_tokens |
+| ① | `engine/sequence.py` | ✅ **完成（2026-09-19）**：spec_tokens / num_spec_tokens + merge_spec_tokens / extend_tokens，协议与 #147 一致；`tests/test_sequence_spec.py` 4 用例绿（m=2 / m=0 / eos / m=k，本地 Python 3.13） |
 | ② | `spec_decode/ngram_proposer.py`（新） | n-gram proposer：min/max_ngram 匹配 + k 三约束 |
 | ③ | `layers/rejection_sampler.py`（新） | greedy 拒绝采样（argmax 比较版） |
 | ④ | `engine/block_manager.py` | allocate_decode（预分配）/ deallocate_decode（回滚）+ **stale hash 防护**（#147 只重置字段没删字典映射——超越点） |
@@ -50,6 +50,8 @@
 | ⑦ | `layers/attention.py` | is_spec_decode 分支走 flash_attn_varlen |
 | ⑧ | `engine/llm_engine.py` | step() 串联四阶段（merge → verify → extend → sample_drafts） |
 
+**⚠️ 已知债务（2026-09-19，用户选 C 暂缓处理）**：`nanovllm/__init__.py` 第 1 行 `from nanovllm.llm import LLM` 被注释（为本地免装 flash_attn 跑测试），当前 `from nanovllm import LLM` **不可用**。触发条件：**任何 git push 之前必须先清偿**——恢复原样或改 PEP 562 懒加载（5 行，learningJob 简报 2026-09-19 有原文），否则云端 pull 后 example.py / bench.py 即断。
+
 **验收**：`example.py` 跑通（enforce_eager）；greedy 下输出与不开 spec decode **逐 token 一致**；重复前缀负载下吞吐可见提升。
 
 第 2 步（draft-model + temperature 拒绝采样 min(1, p/q) + 残差重采样）与第 3 步（benchmark + 简历数据）见外部主规划，不在本文件展开。
@@ -57,3 +59,5 @@
 ## 5. 协作模式
 
 陪练四原则：**小任务驱动 / 先猜后跑 / 答案后置 / 只答卡点**。代码审查：贴 diff 或指文件路径。方向性建议必须带可复查引用（issue / PR / 实测）。
+
+2026-09-19 起，阶段 4 施工改用**开工简报制**（简报四节 → 答疑 → 测试先红后绿；涉 #147 的断言必对照 `learningJob/docs/02-mini-vllm/phase4/147.diff`），正本：learningJob `docs/02-mini-vllm/phase4/meta/2026-09-19-briefing-mode.md`。
