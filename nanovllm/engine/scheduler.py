@@ -33,19 +33,19 @@ class Scheduler:
             if remaining == 0:
                 break
             if not seq.block_table:
-                num_cached_blocks = self.block_manager.can_allocate(seq)
+                num_cached_blocks = self.block_manager.can_allocate_prefill(seq)
                 if num_cached_blocks == -1:
                     break
                 num_tokens = seq.num_tokens - num_cached_blocks * self.block_size
             else:
-                num_tokens = seq.num_tokens - seq.num_cached_tokens
+                num_tokens = seq.num_tokens - seq.num_cached_prefill_tokens
             if remaining < num_tokens and scheduled_seqs:  # only allow chunked prefill for the first seq
                 break
             if not seq.block_table:
-                self.block_manager.allocate(seq, num_cached_blocks)
+                self.block_manager.allocate_prefill(seq, num_cached_blocks)
             seq.num_scheduled_tokens = min(num_tokens, remaining)
             num_batched_tokens += seq.num_scheduled_tokens
-            if seq.num_cached_tokens + seq.num_scheduled_tokens == seq.num_tokens:
+            if seq.num_cached_prefill_tokens + seq.num_scheduled_tokens == seq.num_tokens:
                 seq.status = SequenceStatus.RUNNING
                 self.waiting.popleft()
                 self.running.append(seq)
@@ -81,9 +81,9 @@ class Scheduler:
     def postprocess(self, seqs: list[Sequence], token_ids: list[int], is_prefill: bool):
         for seq, token_id in zip(seqs, token_ids):
             self.block_manager.hash_blocks(seq)
-            seq.num_cached_tokens += seq.num_scheduled_tokens
+            seq.num_cached_prefill_tokens += seq.num_scheduled_tokens
             seq.num_scheduled_tokens = 0
-            if is_prefill and seq.num_cached_tokens < seq.num_tokens:
+            if is_prefill and seq.num_cached_prefill_tokens < seq.num_tokens:
                 continue
             seq.append_token(token_id)
             if (not seq.ignore_eos and token_id == self.eos) or seq.num_completion_tokens == seq.max_tokens:

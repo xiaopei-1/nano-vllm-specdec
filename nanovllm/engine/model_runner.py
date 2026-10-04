@@ -138,7 +138,7 @@ class ModelRunner:
         slot_mapping = []
         block_tables = None
         for seq in seqs:
-            start = seq.num_cached_tokens
+            start = seq.num_cached_prefill_tokens
             seqlen_q = seq.num_scheduled_tokens
             end = start + seqlen_q
             seqlen_k = end
