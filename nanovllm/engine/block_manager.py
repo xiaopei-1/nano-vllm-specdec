@@ -123,15 +123,8 @@ class BlockManager:
         seq.num_cached_prefill_tokens = 0
         seq.block_table.clear()
 
-    def can_append(self, seq: Sequence) -> bool:
-        return len(self.free_block_ids) >= (len(seq) % self.block_size == 1)
-
     def can_allocate_decode(self,seq:Sequence):
         return len(self.free_block_ids) >= (seq.num_blocks - len(seq.block_table))
-
-    def may_append(self, seq: Sequence):
-        if len(seq) % self.block_size == 1:
-            seq.block_table.append(self._allocate_block())
 
     def allocate_decode(self,seq:Sequence):
         block_table = seq.block_table

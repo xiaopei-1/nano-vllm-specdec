@@ -2,6 +2,8 @@ from copy import copy
 from enum import Enum, auto
 from itertools import count
 
+import torch
+
 from nanovllm.sampling_params import SamplingParams
 
 
@@ -56,6 +58,51 @@ class Sequence:
         self.last_token = self.token_ids[-1]
         self.spec_tokens = []
         return True
+
+    # Properties for speculative decode
+
+    @property
+    def num_decode_tokens(self):
+        return self.num_spec_tokens + 1
+
+    @property
+    def decode_tokens(self):
+        return self.token_ids[-self.num_spec_tokens - 1:]
+
+    @property
+    def decode_draft_tokens(self) -> list[int]:
+        return self.token_ids[-self.num_spec_tokens :] if self.num_spec_tokens > 0 else []
+
+    @property
+    def decode_position(self):
+        return torch.arange(self.num_tokens - self.num_spec_tokens - 1, self.num_tokens)
+
+    @property
+    def decode_blocks(self) -> list:
+        num_decode_blocks = 1 + (self.num_spec_tokens - self.last_block_num_tokens + self.block_size) // self.block_size
+        return self.block_table[- num_decode_blocks:]
+
+    @property
+    def decode_slot_mapping(self):
+        # decode blocks
+        decode_blocks = torch.as_tensor(self.decode_blocks,dtype=torch.int32)
+        block_size = self.block_size
+        num_blocks = decode_blocks.numel()
+
+        # block token counts
+        counts = torch.full((num_blocks,), block_size, dtype = torch.int32)
+        counts[-1] = self.last_block_num_tokens
+
+        # repeat block offsets
+        block_offsets = torch.repeat_interleave(decode_blocks * block_size,repeats=counts)
+
+        # in-block offsets via cumsum
+        counts_cum = torch.cumsum(counts,dim=0)
+        starts = torch.repeat_interleave(counts_cum - counts,counts)
+        in_block_offsets = torch.arange(counts.sum(), dtype = torch.int32) - starts
+
+        slot_mapping = block_offsets + in_block_offsets
+        return slot_mapping[- self.num_spec_tokens - 1:]
 
     @property
     def is_finished(self):
