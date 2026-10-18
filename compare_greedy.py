@@ -10,8 +10,8 @@ TAU = 1e-6
 MAX_TOKENS = 512
 
 def sanity_check(llm:LLM)->bool:
-    logits = torch.tensor([1.,5.,2.],dtype=torch.float).cuda()
-    temperatures = torch.tensor(TAU,dtype=torch.float).cuda()
+    logits = torch.tensor([[1.,5.,2.]],dtype=torch.float).cuda()
+    temperatures = torch.tensor([TAU],dtype=torch.float).cuda()
     sample_tokens1 = llm.model_runner.sampler(logits,temperatures)
     sample_tokens2 = llm.model_runner.sampler(logits, temperatures)
 
@@ -133,8 +133,8 @@ def main():
 
     sampling_params = SamplingParams(TAU, MAX_TOKENS)
     prompts = [
-        "把下面这句话原样重复 10 遍：你好呀，你好帅",
-        # "从 1 依次数到 60，每个数字单独一行",
+        # "把下面这句话原样重复 10 遍：你好呀，你好帅",
+        "从 1 依次数到 60，每个数字单独一行",
     ]
     prompts = [
         tokenizer.apply_chat_template([{"role": "user", "content": prompt}],
