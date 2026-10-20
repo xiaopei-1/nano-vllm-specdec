@@ -77,6 +77,7 @@ class Scheduler:
     def preempt(self, seq: Sequence):
         seq.status = SequenceStatus.WAITING
         seq.is_prefill = True
+        seq.unmerge_spec_tokens()
         self.block_manager.deallocate(seq)
         self.waiting.appendleft(seq)
 

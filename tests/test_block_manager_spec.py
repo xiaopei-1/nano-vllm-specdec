@@ -82,15 +82,15 @@ def test_case4():
     # 断言2（I3/free）：2 块、free 恢复到 6
     assert len(seq.block_table) == seq.num_blocks == 2
     assert len(bm.free_block_ids) == 6
-    # 断言3（A 档残留）：fill 段登记的那条映射还在字典里（stale 留存是 A 档预期行为）
-    assert len(bm.hash_to_block_id) == 1
+    # 断言3（B 档已清）：末块重置时映射同步删除，字典不残留 sta
+    assert len(bm.hash_to_block_id) == 0
 
 def test_case5():
     # stale hash 回归锁：重演场景 4 的末状态，然后用同样内容再查一次缓存
     bm, seq = new_seq(5)
     run_verify_round(bm, seq, 4, [200, 999])
-    # 此时字典里残留 stale 映射：登记时的 hash → 块1；但块1 内容已被重置为 [104,200,999]
-    # 用当初登记的满块内容 + 当初的 prefix（块0 未登记 → -1）再查一次
+    # B 档后字典里已无 stale 映射（场景 4 重置时已删）——查询直接 miss；
+    # 断言 miss == True 仍锁住"不误命中"，只是机制从"比中兜底"变为"无可映射命中"
     block, miss = bm.allocate_block([104, 200, 201, 202], -1)
     # 断言：同 hash 命中 stale 映射 → token_ids 比对兜底 → 不误命中（A 档核心行为）
     assert miss == True

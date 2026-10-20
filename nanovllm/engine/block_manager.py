@@ -160,6 +160,8 @@ class BlockManager:
 
         if seq.last_block_num_tokens > 0 and seq.last_block_num_tokens < seq.block_size:
             last_block = self.blocks[block_table[-1]]
+            if last_block.hash != -1:
+                del self.hash_to_block_id[last_block.hash]
             last_block.hash = -1
             last_block.token_ids = seq.block(seq.num_blocks-1)
 

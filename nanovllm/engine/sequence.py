@@ -59,6 +59,15 @@ class Sequence:
         self.spec_tokens = []
         return True
 
+    def unmerge_spec_tokens(self):
+        if self.num_spec_tokens <= 0:
+            return
+        del self.token_ids[-self.num_spec_tokens:]
+        self.num_tokens -= self.num_spec_tokens
+        self.last_token = self.token_ids[-1]
+        self.spec_tokens = []
+        self.num_spec_tokens = 0
+
     # Properties for speculative decode
 
     @property

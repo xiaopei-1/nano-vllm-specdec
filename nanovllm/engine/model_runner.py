@@ -250,8 +250,8 @@ class ModelRunner:
         return temperatures
 
     @torch.inference_mode()
-    def run_model(self, input_ids: torch.Tensor, positions: torch.Tensor, is_prefill: bool):
-        if is_prefill or self.enforce_eager or input_ids.size(0) > 512:
+    def run_model(self, input_ids: torch.Tensor, positions: torch.Tensor, is_prefill: bool, is_spec_decode: bool):
+        if is_prefill or self.enforce_eager or input_ids.size(0) > 512 or is_spec_decode:
             return self.model.compute_logits(self.model(input_ids, positions))
         else:
             bs = input_ids.size(0)
@@ -277,7 +277,7 @@ class ModelRunner:
             prefill_func = self.prepare_decode
         input_ids, positions = prefill_func(seqs)
         temperatures = self.prepare_sample(seqs) if self.rank == 0 else None
-        logits = self.run_model(input_ids, positions, is_prefill)
+        logits = self.run_model(input_ids, positions, is_prefill, is_spec_decode)
         token_ids, token_start_indices = self.rejection_sampler(seqs, logits, temperatures) if self.rank == 0 else None
         reset_context()
         return token_ids.tolist(), token_start_indices.tolist()
