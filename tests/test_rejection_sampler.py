@@ -9,6 +9,11 @@ VOCAB = 100
 # RejectionSampler 构造收 sampler 是依赖注入，正好允许换替身（真 Sampler 路径 M2 云端验）
 greedy = lambda logits, temperatures: logits.argmax(dim=-1)
 
+# M4-B 固定值替身：恒返 88（与 make_logits 构造的 argmax 位错开）。
+# 用途：区分"走了 sampler 路径"还是"被 greedy argmax 覆盖"——
+# greedy 替身的返回恰等于 argmax，两条分流路径输出相同，测不出分流；88 才能分辨
+stub = lambda logits, temperatures: torch.full((logits.shape[0],), 88, dtype=torch.int64)
+
 
 def make_logits(argmax_ids: list[int]) -> torch.Tensor:
     """每行目标位 +10、其余 -10，使每行 argmax 恰为给定 id"""
@@ -18,12 +23,15 @@ def make_logits(argmax_ids: list[int]) -> torch.Tensor:
     return logits
 
 
-def run(argmax_ids, draft_tokens, cum_draft, cum_sampled):
+def run(argmax_ids, draft_tokens, cum_draft, cum_sampled, temperatures=None, sampler=greedy):
     """构造 CPU 张量直调 rejection_sample（绕开 prepare_tensors 的 .cuda()）
-    返回 (output_tokens, num_accepted_tokens)"""
-    rs = RejectionSampler(greedy)
+    返回 (output_tokens, num_accepted_tokens)
+    temperatures：None=全 0 占位（float32）。传入时必须是 float 张量——
+      全 int 列表会造出 int64，引擎 masked_fill_ 填 1.0 直接炸（真实链路恒 float32）
+    sampler：默认 greedy 替身（既有用例行为不变）；测分流时换 stub"""
+    rs = RejectionSampler(sampler)
     logits = make_logits(argmax_ids)
-    temperatures = torch.zeros(len(argmax_ids))  # 替身不消费它，仅为签名占位
+    temperatures = torch.zeros(len(argmax_ids)) if temperatures is None else temperatures  # M4-B 起分流消费它
     draft = torch.tensor(draft_tokens, dtype=torch.int64)
     cd = torch.tensor(cum_draft, dtype=torch.int64)
     cs = torch.tensor(cum_sampled, dtype=torch.int64)
@@ -94,3 +102,56 @@ def test_case4():
     assert output[1].tolist() == [7,60,0]
     # TODO 断言2：num_accepted 两个值是什么？
     assert num_accepted.tolist() == [3,2]
+
+# ===== M4-B greedy 分流用例（2026-10-21，断言值协议手推）=====
+# 协议：分流后 sample_tokens = where(T==0 的位取 argmax, T>0 的位取 sampler 结果)
+
+def test_m4_case_a_all_greedy():
+    # 全 greedy：温度全 0（默认占位即所需）+ stub 恒返 88。
+    # 手推：3 个采样位全被 argmax [5,6,50] 覆盖（88 无效）→
+    #   draft [5,6] 前两位接受、第 3 位 bonus → output=[5,6,50], accepted=3
+    # 有牙齿：注释引擎分流（sampled 直连）后 sampled 全 88 → j=0 即断 → output=[88,0,0] → 此断言红
+    output, num_accepted = run(
+        argmax_ids=[5, 6, 50],
+        draft_tokens=[5, 6],
+        cum_draft=[0, 2],
+        cum_sampled=[0, 3],
+        sampler=stub,
+    )
+    assert output[0].tolist() == [5, 6, 50]
+    assert num_accepted.tolist() == [3]
+
+def test_m4_case_b_all_sampled():
+    # 全采样：温度全 0.7 + stub 恒返 88，argmax 位 [5,6,50] 不生效。
+    # 手推：sampled 全 88 → draft [88,88] 前两位接受、第 3 位 bonus=88 →
+    #   output=[88,88,88], accepted=3
+    # 有牙齿：分流条件若写反（mask 取反），output 会变 [5,6,50] → 此断言红
+    output, num_accepted = run(
+        argmax_ids=[5, 6, 50],
+        draft_tokens=[88, 88],
+        cum_draft=[0, 2],
+        cum_sampled=[0, 3],
+        temperatures=torch.tensor([0.7, 0.7, 0.7]),
+        sampler=stub,
+    )
+    assert output[0].tolist() == [88, 88, 88]
+    assert num_accepted.tolist() == [3]
+
+def test_m4_case_c_mixed_batch():
+    # 混合批：温度按序列展开，单序列做不到混合——必须两条序列。
+    #   seq0：T=0、draft [5,6]、argmax 位 [5,6,50]（mask 真 → argmax 生效）
+    #   seq1：T=0.7、draft [7]（mask 假 → 采样路径，stub 恒 88）
+    #   采样位布局（5 位）：[0,0,0, 0.7,0.7] = seq0 三位 + seq1 两位
+    # 手推：合并后 sample_tokens = [5,6,50, 88,88] →
+    #   seq0 全接受 [5,6,50], accepted=3；seq1 首位 7 vs 88 即断 → [88,0,0], accepted=1
+    output, num_accepted = run(
+        argmax_ids=[5, 6, 50, 70, 71],   # 后两位无意义（mask 假），随便给
+        draft_tokens=[5, 6, 7],
+        cum_draft=[0, 2, 3],
+        cum_sampled=[0, 3, 5],
+        temperatures=torch.tensor([0.0, 0.0, 0.0, 0.7, 0.7]),
+        sampler=stub,
+    )
+    assert output[0].tolist() == [5, 6, 50]
+    assert output[1].tolist() == [88, 0, 0]
+    assert num_accepted.tolist() == [3, 1]

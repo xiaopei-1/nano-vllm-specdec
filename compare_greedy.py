@@ -1,4 +1,5 @@
 import os
+import json
 
 import torch
 
@@ -6,7 +7,8 @@ from nanovllm import LLM, SamplingParams
 from transformers import AutoTokenizer
 from nanovllm.engine.sequence import Sequence
 
-TAU = 1e-6
+TAU = 1e-6      # sanity_check 用：直调 sampler 验 τ-greedy 行为（sampler 级自检，不走路由）
+T_MAIN = 0      # 主对照温度：走引擎（M4-B 分流后 T=0 合法且正确）。互证第二遍改回 1e-6
 MAX_TOKENS = 512
 
 def sanity_check(llm:LLM)->bool:
@@ -131,7 +133,7 @@ def main():
         print("sanity自检报错")
         return
 
-    sampling_params = SamplingParams(TAU, MAX_TOKENS)
+    sampling_params = SamplingParams(T_MAIN, MAX_TOKENS)
     prompts = [
         # "把下面这句话原样重复 10 遍：你好呀，你好帅",
         "从 1 依次数到 60，每个数字单独一行",
@@ -152,6 +154,10 @@ def main():
     ok = check_result(llm, tokens_a, tokens_b, count_a, count_b)
 
     report(tokens_a, tokens_b, count_a, count_b, accept_dist, ok)
+
+    # M4-B 互证存档：两遍（T_MAIN=0 / 1e-6）各生成一份，比对两份的 t_a/t_b 全等
+    json.dump({"t_a": tokens_a, "t_b": tokens_b},
+              open(f"cg_result_T{T_MAIN}.json", "w"))
 
 if __name__ == '__main__':
     main()

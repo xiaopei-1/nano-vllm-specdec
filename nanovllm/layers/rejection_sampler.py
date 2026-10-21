@@ -43,8 +43,11 @@ class RejectionSampler(nn.Module):
                          cum_num_sampled_tokens: torch.Tensor,
                          output_tokens: torch.Tensor,
                          num_accepted_tokens: torch.Tensor):
-
-        sample_tokens = self.sampler(logits,temperatures)
+        greedy_mask = temperatures == 0
+        temperatures.masked_fill_(greedy_mask, 1.0)
+        sampled = self.sampler(logits,temperatures)
+        greedy_tokens = logits.float().argmax(dim=-1)
+        sample_tokens = torch.where(greedy_mask, greedy_tokens, sampled)
 
         num_seq = cum_num_draft_tokens.shape[-1] - 1
         for i in range(num_seq):
